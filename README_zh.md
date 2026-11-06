@@ -77,7 +77,7 @@ make -j$(nproc)
 
 ## 本 Fork 的自动同步与构建
 
-`Sync upstream and build` 每 3 小时检查并合并 `pbs05/ponwrt` 的 `master`（UTC 时间 0、3、6、9、12、15、18、21 时的第 17 分钟），保留本 Fork 的修改。同步发生冲突时任务报错，不会强制覆盖分支。也可以在 Actions 页面手动运行该工作流。
+`Sync upstream and build` 每小时整点检查并合并 `pbs05/ponwrt` 的 `master`（cron：`0 * * * *`），保留本 Fork 的修改。同步发生冲突时任务报错，不会强制覆盖分支。也可以在 Actions 页面手动运行该工作流。
 
 每个新的上游提交首次检查时会触发原有的 `Release PonWrt`，编译上游定义的全部目标，目前为 AN7581 和 AN7583。发布标签采用 `upstream-<上游完整提交 SHA>`，标签固定本次构建的源码。相同上游提交已经有构建任务时不再重复触发；构建失败后可在对应运行页面选择 Re-run failed jobs。
 
