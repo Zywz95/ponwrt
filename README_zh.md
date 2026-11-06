@@ -74,13 +74,3 @@ make -j$(nproc)
 使用 [AN758x-Stock2UBI](https://github.com/pbs05/an758x-stock2ubi) 备份原厂闪存并安装 UBI 布局。启动镜像和 Web 恢复界面由 [AN758x U-Boot](https://github.com/pbs05/uboot-an758x) 提供。
 
 刷入 PonWrt 后，通过 U-Boot Web 或 LuCI 的“网络 → PON → 配置 → PON board data”恢复原厂校准和身份数据。烽火 `factory` 需要先使用 [FiberHome Factory](https://github.com/pbs05/fiberhome-factory) 转换；转换后的烽火数据、`reservearea` 和 `dsd` 写入 PonWrt 的 `factory` 卷；Nokia 的 `bosa` 和 `ri` 写入同名卷。
-
-## 本 Fork 的自动同步与构建
-
-`Sync upstream and build` 每小时整点检查并合并 `pbs05/ponwrt` 的 `master`（cron：`0 * * * *`），保留本 Fork 的修改。同步发生冲突时任务报错，不会强制覆盖分支。也可以在 Actions 页面手动运行该工作流。
-
-每个新的上游提交首次检查时会触发原有的 `Release PonWrt`，编译上游定义的全部目标，目前为 AN7581 和 AN7583。发布标签采用 `upstream-<上游完整提交 SHA>`，标签固定本次构建的源码。相同上游提交已经有构建任务时不再重复触发；构建失败后可在对应运行页面选择 Re-run failed jobs。
-
-编译成功后，固件归档和校验值发布到本仓库 Releases，也可从 Actions Artifacts 下载；Artifacts 保留 7 天。此检查只监视 `pbs05/ponwrt` 的主分支，外部 feeds 仓库单独变化不会触发新构建。
-
-定时任务可能因 GitHub 排队而延迟。公开仓库连续 60 天没有活动时，GitHub 会自动禁用定时工作流，届时需要在 Actions 页面重新启用。
