@@ -1,0 +1,89 @@
+name: Sync upstream and build
+
+on:
+  schedule:
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync upstream and dispatch release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Sync and build changed upstream
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const branch = 'master';
+            const workflow_id = 'release.yml';
+
+            const { data: sync } = await github.rest.repos.mergeUpstream({
+              owner, repo, branch
+            });
+            core.info(sync.message);
+
+            const { data: upstream } = await github.rest.repos.getBranch({
+              owner: 'pbs05', repo: 'ponwrt', branch
+            });
+            const { data: fork } = await github.rest.repos.getBranch({
+              owner, repo, branch
+            });
+            const upstreamSha = upstream.commit.sha;
+            const { data: comparison } = await github.rest.repos.compareCommitsWithBasehead({
+              owner, repo, basehead: `${upstreamSha}...${fork.commit.sha}`
+            });
+            if (!['ahead', 'identical'].includes(comparison.status)) {
+              throw new Error('Upstream advanced during synchronization; run this workflow again.');
+            }
+
+            const tag = `upstream-${upstreamSha}`;
+            let buildSha;
+            try {
+              const { data: ref } = await github.rest.git.getRef({
+                owner, repo, ref: `tags/${tag}`
+              });
+              buildSha = ref.object.sha;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              buildSha = fork.commit.sha;
+              await github.rest.git.createRef({
+                owner, repo, ref: `refs/tags/${tag}`, sha: buildSha
+              });
+            }
+
+            const { data: runs } = await github.rest.actions.listWorkflowRuns({
+              owner, repo, workflow_id, event: 'workflow_dispatch',
+              head_sha: buildSha, per_page: 1
+            });
+            if (runs.workflow_runs.length) {
+              const previous = runs.workflow_runs[0];
+              core.info(`This upstream revision already has a build: ${previous.html_url}`);
+              await core.summary
+                .addHeading('Upstream unchanged: no new build')
+                .addRaw(`Upstream commit: ${upstreamSha}\n\n`)
+                .addLink('Existing build', previous.html_url)
+                .write();
+              return;
+            }
+
+            // Explicit dispatch is required: GITHUB_TOKEN pushes do not trigger push workflows.
+            await github.rest.actions.createWorkflowDispatch({
+              owner, repo, workflow_id, ref: tag,
+              inputs: { tag, prerelease: 'true' }
+            });
+            core.info(`Dispatched ${workflow_id} at ${buildSha} for ${upstreamSha}`);
+            await core.summary
+              .addHeading('Upstream synchronized; release build dispatched')
+              .addRaw(`Upstream commit: ${upstreamSha}\n\nBuild commit: ${buildSha}\n\nRelease tag: ${tag}\n\n`)
+              .addLink('Release builds', `https://github.com/${owner}/${repo}/actions/workflows/${workflow_id}`)
+              .write();
