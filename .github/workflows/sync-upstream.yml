@@ -2,7 +2,7 @@ name: Sync upstream and build
 
 on:
   schedule:
-    - cron: '17,47 * * * *'
+    - cron: '17 */3 * * *'
   workflow_dispatch:
 
 permissions:
