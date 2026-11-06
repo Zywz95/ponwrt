@@ -30,7 +30,6 @@ jobs:
       fail-fast: false
       matrix:
         target:
-          - an7581
           - an7583
 
     steps:
