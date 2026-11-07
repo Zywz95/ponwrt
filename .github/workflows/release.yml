@@ -132,12 +132,26 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
+          set -euo pipefail
+          tag_ref="refs/tags/$RELEASE_TAG"
+          existing_ref="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$RELEASE_TAG" \
+            --jq '.[] | .ref' | { grep -Fx "$tag_ref" || test "$?" -eq 1; })"
+          if [ -z "$existing_ref" ]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="$tag_ref" -f sha="$GITHUB_SHA"
+          fi
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
+          if [ "$tag_sha" != "$GITHUB_SHA" ]; then
+            echo "Release tag does not match the built commit" >&2
+            exit 1
+          fi
+
           args=(
             "$RELEASE_TAG"
             release/*.tar.zst
             release/sha256sums
             --repo "$GITHUB_REPOSITORY"
-            --target "$GITHUB_SHA"
+            --verify-tag
             --title "PonWrt $RELEASE_TAG"
             --generate-notes
           )

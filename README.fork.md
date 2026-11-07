@@ -1,6 +1,6 @@
 # 本 Fork 的自动同步与构建
 
-本仓库跟踪 `pbs05/ponwrt` 的 `master`。Fork 专用配置和说明分别位于 `.github/workflows/sync-upstream.yml` 与本文件；上游已有文件保持原样，包括 `.github/workflows/release.yml` 和 `README_zh.md`。
+本仓库跟踪 `pbs05/ponwrt` 的 `master`。Fork 专用配置和说明分别位于 `.github/workflows/sync-upstream.yml` 与本文件。上游源码和原有 README 保持原样；`.github/workflows/release.yml` 仅包含下述发布权限修复。
 
 ## 自动检查
 
@@ -14,12 +14,14 @@
 
 编译成功后，固件归档和校验值发布到本仓库 Releases，也可从 Actions Artifacts 下载；Artifacts 保留 7 天。
 
+发布前先创建并校验标签，确保指向实际编译的提交，再用 `gh release create --verify-tag` 发布，不传 `--target`。这避免构建期间默认分支更新工作流后，GitHub 对旧提交触发额外的 Workflows 写权限检查而返回 403；不需要额外保存个人访问令牌。
+
 每次构建使用新的 GitHub 托管运行环境。系统依赖按需重新安装，feeds 重新拉取；工具链和编译产物没有持久化缓存，因此仍会重新编译。
 
 上游发布工作流使用 `actions/cache` 缓存源码下载目录 `dl/`。GitHub 缓存按分支或标签隔离，不同标签不能复用彼此创建的缓存。当前自动构建为每个上游版本使用独立标签，所以不能保证跨版本复用下载缓存；同一标签的重新运行可复用该标签已有的缓存。缓存仅在构建任务成功结束后保存，首次构建或缓存被清理后需要重新下载。
 
 ## 同步与调度限制
 
-自动同步使用合并，不强制覆盖分支。当前只新增两个 Fork 专用文件，通常不会与上游已有文件的修改冲突；若上游以后新增同名文件，仍可能发生冲突，届时同步任务会报错。
+自动同步使用合并，不强制覆盖分支。目前新增两个 Fork 专用文件，并对 `release.yml` 的发布步骤作最小修复；若上游修改同一发布逻辑或新增同名文件，仍可能发生冲突，届时同步任务会报错。
 
 GitHub 定时任务可能排队延迟，整点尤其容易出现延迟。公开仓库连续 60 天没有活动时，GitHub 会自动禁用定时工作流，届时需要在 Actions 页面重新启用。
