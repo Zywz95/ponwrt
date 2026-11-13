@@ -92,6 +92,9 @@ jobs:
         run: |
           set -euo pipefail
           grep -q '^CONFIG_PACKAGE_honk=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-lib-daeuniverse=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-app-honk=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-i18n-daeuniverse-zh-cn=y$' .config
           grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' .config
           ! grep -q '^CONFIG_KERNEL_DEBUG_INFO_REDUCED=y$' .config
 
@@ -107,6 +110,9 @@ jobs:
           set -euo pipefail
           manifest="$(ls bin/targets/airoha/an7583/*.manifest)"
           grep -Eq '^honk ' "$manifest"
+          grep -Eq '^luci-lib-daeuniverse ' "$manifest"
+          grep -Eq '^luci-app-honk ' "$manifest"
+          grep -Eq '^luci-i18n-daeuniverse-zh-cn ' "$manifest"
           grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' bin/targets/airoha/an7583/config.buildinfo
           test -n "$(find bin/packages -type f \( -name 'honk-*.apk' -o -name 'honk-*.ipk' \) -print -quit)"
           vmlinux="$(find build_dir -maxdepth 3 -type f -path '*linux-airoha_an7583/vmlinux' -print -quit)"

@@ -12,7 +12,7 @@
 
 ## honk
 
-`package/honk` 把 honk 打包进 AN7583 固件，并自动安装为 `/usr/bin/honk-core`、`/etc/init.d/honk`、`/etc/config/honk` 和 `/etc/honk/config.dae`。服务默认停用；修改配置后执行 `/etc/init.d/honk enable && /etc/init.d/honk start`，再从局域网访问 `http://<路由器IP>:9527/`。
+`package/honk` 把 honk 打包进 AN7583 固件，并自动安装为 `/usr/bin/honk-core`、`/etc/init.d/honk`、`/etc/config/honk` 和 `/etc/honk/config.dae`。同时默认安装 `luci-lib-daeuniverse`、`luci-app-honk` 和 `luci-i18n-daeuniverse-zh-cn`，在 LuCI 的“服务 → honk”中管理服务状态、配置文件和服务日志。三个包直接取自 daeuniverse/openwrt-packages 的 LuCI 源码，不引入该仓库的 `honk`/`dae` 包，避免与本地 `package/honk` 重名。服务默认停用；修改配置后执行 `/etc/init.d/honk enable && /etc/init.d/honk start`，也可从 LuCI 页面操作。
 
 honk 本体使用上游官方发布的 aarch64 静态 musl `stock-full` 构建（含 Clash API、native API 和 doona 界面），由上游 CI 从源码编译；本仓库只负责校验、打包和装进固件。这样不在 OpenWrt 构建中引入 Rust nightly、bpf-linker 和 BoringSSL 交叉编译链，避免固件构建随机失败。版本、文件名和 SHA-256 固定在 `package/honk/release.mk`。
 
