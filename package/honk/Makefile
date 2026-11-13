@@ -41,11 +41,10 @@ define Package/honk
   URL:=https://github.com/daeuniverse/honk
   LICENSE:=GPL-3.0-only
   # The binary is static musl. The kernel modules provide the TC/TCX datapath,
-  # the dae0 veth pair, NFQUEUE staging and conntrack; the geo packages supply
-  # the databases linked into /usr/share/honk.
+  # the dae0 veth pair, NFQUEUE staging and conntrack.
   DEPENDS:=+kmod-veth +kmod-sched-core +kmod-sched-bpf \
            +kmod-nft-core +kmod-nft-queue +kmod-nfnetlink-queue \
-           +kmod-nf-conntrack +v2ray-geoip +v2ray-geosite
+           +kmod-nf-conntrack
 endef
 
 define Package/honk/description
@@ -59,6 +58,11 @@ define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
 	$(TAR) -xzf $(DL_DIR)/$(PKG_SOURCE) -C $(PKG_BUILD_DIR) --strip-components=1
 	find $(PKG_BUILD_DIR) -type f -name honk-core -print -quit | grep -q .
+endef
+
+# The archive already contains the release binary; without this override the
+# default recipe runs make in a directory that has no Makefile.
+define Build/Compile
 endef
 
 define Package/honk/conffiles
@@ -78,9 +82,6 @@ define Package/honk/install
 	$(INSTALL_CONF) $(PKG_DIR)/files/config.dae $(1)/etc/honk/config.dae
 	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
 	printf '%s\n' '/etc/honk/data/' > $(1)/lib/upgrade/keep.d/honk
-	$(INSTALL_DIR) $(1)/usr/share/honk
-	$(LN) ../v2ray/geoip.dat $(1)/usr/share/honk/geoip.dat
-	$(LN) ../v2ray/geosite.dat $(1)/usr/share/honk/geosite.dat
 endef
 
 $(eval $(call BuildPackage,honk))
