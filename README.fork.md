@@ -12,7 +12,11 @@
 
 ## honk
 
-`package/honk` 把 honk 打包进 AN7583 固件，并自动安装为 `/usr/bin/honk-core`、`/etc/init.d/honk`、`/etc/config/honk` 和 `/etc/honk/config.dae`。同时默认安装 `luci-lib-daeuniverse`、`luci-app-honk` 和 `luci-i18n-daeuniverse-zh-cn`，在 LuCI 的“服务 → honk”中管理服务状态、配置文件和服务日志。三个包直接取自 daeuniverse/openwrt-packages 的 LuCI 源码，不引入该仓库的 `honk`/`dae` 包，避免与本地 `package/honk` 重名。**不会安装 `dae`、`luci-app-dae` 或 `luci-app-daed`**：dae 与 honk 会争用 `dae0`/`daens` 和相同接口，二者不能同时运行。服务默认停用；修改配置后执行 `/etc/init.d/honk enable && /etc/init.d/honk start`，也可从 LuCI 页面操作。
+`package/honk` 把 honk 打包进 AN7583 固件，并自动安装为 `/usr/bin/honk-core`、`/etc/init.d/honk`、`/etc/config/honk` 和 `/etc/honk/config.dae`。同时默认安装 `luci-lib-daeuniverse`、`luci-app-honk` 和 `luci-i18n-daeuniverse-zh-cn`，在 LuCI 的“服务 → honk”中管理服务状态、配置文件和服务日志。
+
+两个 LuCI 包通过 daeuniverse/openwrt-packages feed 引入，固定到提交 `6157f709f52cdbf34c39e5fb69f4b81f468c10e6`。构建先安装基础 feeds，再追加该 feed，并只选择 `luci-lib-daeuniverse` 和 `luci-app-honk`；中文语言包由共享库的 `po/zh_Hans` 生成。本仓库不再保留这两个 LuCI 包的源码副本。官方依赖的 `flock` 由 PONWrt 基础仓库的 util-linux 提供，`coreutils-timeout` 由 packages feed 提供。
+
+本地 `package/honk` 保持不变，不安装该 feed 的 honk 源码包。**不会安装 `dae`、`luci-app-dae` 或 `luci-app-daed`**：dae 与 honk 会争用 `dae0`/`daens` 和相同接口，二者不能同时运行。服务默认停用；修改配置后执行 `/etc/init.d/honk enable && /etc/init.d/honk start`，也可从 LuCI 页面操作。
 
 honk 本体使用上游官方发布的 aarch64 静态 musl `stock-full` 构建（含 Clash API、native API 和 doona 界面），由上游 CI 从源码编译；本仓库只负责校验、打包和装进固件。这样不在 OpenWrt 构建中引入 Rust nightly、bpf-linker 和 BoringSSL 交叉编译链，避免固件构建随机失败。版本、文件名和 SHA-256 固定在 `package/honk/release.mk`。
 
@@ -36,6 +40,6 @@ honk 的构建选项放在独立的 `configs/honk.config`，仅在 AN7583 目标
 
 ## 同步与调度限制
 
-自动同步使用合并，不强制覆盖分支。目前新增 `sync-upstream.yml`、`honk-release.yml`、`package/honk/`、两个 LuCI 包、`configs/honk.config` 和本文件，并对 `release.yml` 的发布步骤作最小修复；`sync-upstream` 与 `honk-release` 共用 `master-write` 并发组，避免两个任务同时写 master。若上游修改 `release.yml` 的同一段或新增同名文件，仍可能发生冲突，届时同步任务会报错。
+自动同步使用合并，不强制覆盖分支。目前新增 `sync-upstream.yml`、`honk-release.yml`、`package/honk/`、独立配置片段和本文件；LuCI 包及 Vantage 主题由固定版本的 feeds 引入。`sync-upstream` 与 `honk-release` 共用 `master-write` 并发组，避免两个任务同时写 master。若上游修改 `release.yml` 的同一段或新增同名文件，仍可能发生冲突，届时同步任务会报错。
 
 GitHub 定时任务可能排队延迟，整点尤其容易出现延迟。公开仓库连续 60 天没有活动时，GitHub 会自动禁用定时工作流，届时需要在 Actions 页面重新启用。

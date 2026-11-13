@@ -75,6 +75,18 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      - name: Install honk LuCI from pinned feed
+        if: matrix.target == 'an7583'
+        run: |
+          echo 'src-git daeuniverse https://github.com/daeuniverse/openwrt-packages.git^6157f709f52cdbf34c39e5fb69f4b81f468c10e6' >> feeds.conf.default
+          ./scripts/feeds update daeuniverse
+          ./scripts/feeds install -p daeuniverse luci-lib-daeuniverse luci-app-honk
+          test -L package/feeds/daeuniverse/luci-lib-daeuniverse
+          test -L package/feeds/daeuniverse/luci-app-honk
+          test -f package/honk/Makefile
+          test ! -e package/feeds/daeuniverse/honk
+          test ! -e package/feeds/daeuniverse/dae
+
       - name: Load repository signing key
         env:
           PONWRT_APK_PRIVATE_KEY: ${{ secrets.PONWRT_APK_PRIVATE_KEY }}
