@@ -93,6 +93,18 @@ jobs:
       - name: Build ${{ matrix.target }}
         run: make -j"$(nproc)"
 
+      - name: Verify honk package and kernel BTF
+        if: matrix.target == 'an7583'
+        run: |
+          set -euo pipefail
+          manifest="$(ls bin/targets/airoha/an7583/*.manifest)"
+          grep -Eq '^honk ' "$manifest"
+          grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' bin/targets/airoha/an7583/config.buildinfo
+          test -n "$(find bin/packages -type f \( -name 'honk-*.apk' -o -name 'honk-*.ipk' \) -print -quit)"
+          vmlinux="$(find build_dir -maxdepth 3 -type f -path '*linux-airoha_an7583/vmlinux' -print -quit)"
+          test -n "$vmlinux"
+          readelf -S "$vmlinux" | grep -q '\.BTF'
+
       - name: Pack ${{ matrix.target }}
         run: |
           mkdir release

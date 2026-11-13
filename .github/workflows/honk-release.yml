@@ -1,0 +1,113 @@
+name: Sync honk release
+
+# honk publishes new versions as GitHub Releases. A release in another
+# repository cannot start a workflow here without a webhook secret on that
+# repository, so this job polls the release list and dispatches the normal
+# firmware build when the version in package/honk/release.mk is stale.
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: sync-honk
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Update honk package and dispatch build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check honk releases
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = 'master';
+            const releaseWorkflow = 'release.yml';
+            const releaseFile = 'package/honk/release.mk';
+
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: 'daeuniverse', repo: 'honk', per_page: 100
+            });
+            const release = releases
+              .filter((item) => !item.draft && /^v\d+\.\d+\.\d+/.test(item.tag_name))
+              .sort((a, b) => new Date(b.published_at) - new Date(a.published_at))[0];
+            if (!release) {
+              throw new Error('No honk release found');
+            }
+
+            const asset = release.assets.find((item) =>
+                item.name.endsWith('-aarch64-unknown-linux-musl-stock-full.tar.gz')) ||
+              release.assets.find((item) =>
+                item.name.endsWith('-aarch64-unknown-linux-musl-full.tar.gz'));
+            if (!asset) {
+              throw new Error(`No aarch64 musl full asset in honk ${release.tag_name}`);
+            }
+            if (!asset.digest || !asset.digest.startsWith('sha256:')) {
+              throw new Error(`Asset ${asset.name} has no sha256 digest`);
+            }
+
+            const version = release.tag_name
+              .replace(/^v/, '')
+              .replace(/-alpha\./, '_alpha')
+              .replace(/-beta\./, '_beta')
+              .replace(/-rc\./, '_rc');
+            const next = [
+              '# Updated automatically by .github/workflows/honk-release.yml.',
+              '# Versions follow the upstream release tag; HONK_VERSION is the apk-safe form',
+              '# (0.1.0-beta.6 becomes 0.1.0_beta6).',
+              `HONK_GIT_TAG:=${release.tag_name}`,
+              `HONK_VERSION:=${version}`,
+              `HONK_SOURCE:=${asset.name}`,
+              `HONK_HASH:=${asset.digest.slice('sha256:'.length)}`,
+              ''
+            ].join('\n');
+
+            const { data: current } = await github.rest.repos.getContent({
+              owner, repo, path: releaseFile, ref: branch
+            });
+            const currentText = Buffer.from(current.content, 'base64').toString();
+            if (currentText.includes(`HONK_GIT_TAG:=${release.tag_name}`)) {
+              core.info(`honk ${release.tag_name} is already pinned; nothing to do`);
+              return;
+            }
+
+            const { data: updated } = await github.rest.repos.createOrUpdateFileContents({
+              owner, repo, path: releaseFile, branch,
+              message: `honk: update to ${release.tag_name}`,
+              content: Buffer.from(next).toString('base64'),
+              sha: current.sha
+            });
+            const builtSha = updated.commit.sha;
+            core.info(`Updated ${releaseFile} to ${release.tag_name} in ${builtSha}`);
+
+            const { data: previous } = await github.rest.actions.listWorkflowRuns({
+              owner, repo, workflow_id: releaseWorkflow,
+              event: 'workflow_dispatch', head_sha: builtSha, per_page: 1
+            });
+            if (previous.workflow_runs.length) {
+              core.info(`A build already exists for ${builtSha}; not dispatching again`);
+              return;
+            }
+
+            // The tag keeps the release pinned to the exact commit that
+            // contains this honk version.
+            const tag = `honk-${release.tag_name}-${builtSha.slice(0, 8)}`;
+            await github.rest.actions.createWorkflowDispatch({
+              owner, repo, workflow_id: releaseWorkflow, ref: branch,
+              inputs: { tag, prerelease: 'true' }
+            });
+            core.info(`Dispatched ${releaseWorkflow} for honk ${release.tag_name} at ${builtSha}`);
+            await core.summary
+              .addHeading('honk updated; firmware build dispatched')
+              .addRaw(`honk release: ${release.tag_name}\n\nAsset: ${asset.name}\n\nCommit: ${builtSha}\n\nRelease tag: ${tag}\n\n`)
+              .addLink('Release builds', `https://github.com/${owner}/${repo}/actions/workflows/${releaseWorkflow}`)
+              .write();
