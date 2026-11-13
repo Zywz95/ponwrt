@@ -82,9 +82,16 @@ jobs:
 
       - name: Configure ${{ matrix.target }}
         run: |
-          ./scripts/kconfig.pl + \
-            "configs/${{ matrix.target }}.config" \
-            configs/release.config > .config
+          if [ "${{ matrix.target }}" = "an7583" ]; then
+            ./scripts/kconfig.pl + + \
+              "configs/${{ matrix.target }}.config" \
+              configs/release.config \
+              configs/honk.config > .config
+          else
+            ./scripts/kconfig.pl + \
+              "configs/${{ matrix.target }}.config" \
+              configs/release.config > .config
+          fi
           make defconfig
 
       - name: Check honk kernel options early

@@ -10,7 +10,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: sync-upstream
+  group: master-write
   cancel-in-progress: false
 
 jobs:

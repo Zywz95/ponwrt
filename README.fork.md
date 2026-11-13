@@ -16,7 +16,9 @@
 
 honk 本体使用上游官方发布的 aarch64 静态 musl `stock-full` 构建（含 Clash API、native API 和 doona 界面），由上游 CI 从源码编译；本仓库只负责校验、打包和装进固件。这样不在 OpenWrt 构建中引入 Rust nightly、bpf-linker 和 BoringSSL 交叉编译链，避免固件构建随机失败。版本、文件名和 SHA-256 固定在 `package/honk/release.mk`。
 
-运行时要求：Linux 6.12+（本目标为 6.18）、root、bpffs 和内核 BTF。`configs/an7583.config` 已启用 `CONFIG_KERNEL_DEBUG_INFO_BTF`，并关闭会阻止 BTF 的 `CONFIG_KERNEL_DEBUG_INFO_REDUCED`；`CGROUP_BPF` 原本已启用，TC/TCX 所需的 `NET_CLS_ACT` 由 `kmod-sched-core` 选择。发布工作流会校验内核 vmlinux 的 `.BTF` 段、`honk` 软件包和固件 manifest，任一缺失都会让构建失败，避免产出“装了但不能运行”的固件。
+honk 的构建选项放在独立的 `configs/honk.config`，仅在 AN7583 目标构建时合并；上游 `configs/an7583.config` 保持原样，减少同步冲突。
+
+运行时要求：Linux 6.12+（本目标为 6.18）、root、bpffs 和内核 BTF。`configs/honk.config` 已启用 `CONFIG_KERNEL_DEBUG_INFO_BTF`，并关闭会阻止 BTF 的 `CONFIG_KERNEL_DEBUG_INFO_REDUCED`；`CGROUP_BPF` 原本已启用，TC/TCX 所需的 `NET_CLS_ACT` 由 `kmod-sched-core` 选择。发布工作流会校验内核 vmlinux 的 `.BTF` 段、`honk` 及三个 LuCI 软件包和固件 manifest，任一缺失都会让构建失败，避免产出“装了但不能运行”的固件。
 
 `Sync honk release` 每小时检查 `daeuniverse/honk` 的 Releases（包括 beta/rc 预发布，排除 debug 标签）。发现新版本后更新 `release.mk`，提交并用新标签触发 `Release PonWrt` 编译全部目标。跨仓库 Release 没有可用的直接 webhook（需要 honk 仓库的管理权限），所以采用定时轮询；GitHub 定时任务可能延迟。
 
@@ -32,6 +34,6 @@ honk 本体使用上游官方发布的 aarch64 静态 musl `stock-full` 构建�
 
 ## 同步与调度限制
 
-自动同步使用合并，不强制覆盖分支。目前新增 `sync-upstream.yml`、`honk-release.yml`、`package/honk/` 和本文件，并对 `release.yml` 的发布步骤作最小修复；若上游修改同一发布逻辑或新增同名文件，仍可能发生冲突，届时同步任务会报错。
+自动同步使用合并，不强制覆盖分支。目前新增 `sync-upstream.yml`、`honk-release.yml`、`package/honk/`、两个 LuCI 包、`configs/honk.config` 和本文件，并对 `release.yml` 的发布步骤作最小修复；`sync-upstream` 与 `honk-release` 共用 `master-write` 并发组，避免两个任务同时写 master。若上游修改 `release.yml` 的同一段或新增同名文件，仍可能发生冲突，届时同步任务会报错。
 
 GitHub 定时任务可能排队延迟，整点尤其容易出现延迟。公开仓库连续 60 天没有活动时，GitHub 会自动禁用定时工作流，届时需要在 Actions 页面重新启用。
