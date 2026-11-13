@@ -21,8 +21,65 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  versions:
+    name: Resolve latest honk and Vantage releases
+    runs-on: ubuntu-24.04
+    outputs:
+      pins: ${{ steps.resolve.outputs.result }}
+    steps:
+      - name: Resolve current releases and source commits
+        id: resolve
+        uses: actions/github-script@v8
+        with:
+          script: |
+            async function latest(owner, repo) {
+              const releases = await github.paginate(github.rest.repos.listReleases, {
+                owner, repo, per_page: 100
+              });
+              const release = releases
+                .filter(item => !item.draft && /^v?\d+\.\d+\.\d+/.test(item.tag_name))
+                .sort((a, b) => new Date(b.published_at) - new Date(a.published_at))[0];
+              if (!release) throw new Error(`No versioned release for ${owner}/${repo}`);
+              const { data: ref } = await github.rest.git.getRef({
+                owner, repo, ref: `tags/${release.tag_name}`
+              });
+              let object = ref.object;
+              while (object.type === 'tag') {
+                const { data: tag } = await github.rest.git.getTag({
+                  owner, repo, tag_sha: object.sha
+                });
+                object = tag.object;
+              }
+              if (object.type !== 'commit') throw new Error('Release tag is not a commit');
+              return { tag: release.tag_name, revision: object.sha };
+            }
+            const [honk, vantage, feed] = await Promise.all([
+              latest('daeuniverse', 'honk'),
+              latest('anothaDev', 'luci-theme-vantage'),
+              github.rest.git.getRef({ owner: 'daeuniverse', repo: 'openwrt-packages', ref: 'heads/main' })
+            ]);
+            honk.version = honk.tag.replace(/^v/, '')
+              .replace(/-alpha\./, '_alpha').replace(/-beta\./, '_beta').replace(/-rc\./, '_rc');
+            const pins = { resolved_at: new Date().toISOString(), honk, vantage,
+              feed: { revision: feed.data.object.sha } };
+            core.info(JSON.stringify(pins, null, 2));
+            await core.summary.addHeading('Source versions for this build').addTable([
+              ['Source', 'Version', 'Commit'],
+              ['honk', honk.tag, honk.revision],
+              ['Vantage', vantage.tag, vantage.revision],
+              ['daeuniverse feed', 'main', pins.feed.revision]
+            ]).write();
+            return pins;
+
   build:
     name: Build ${{ matrix.target }}
+    needs: versions
+    env:
+      HONK_GIT_TAG: ${{ fromJSON(needs.versions.outputs.pins).honk.tag }}
+      HONK_VERSION: ${{ fromJSON(needs.versions.outputs.pins).honk.version }}
+      HONK_REVISION: ${{ fromJSON(needs.versions.outputs.pins).honk.revision }}
+      HONK_FEED_REVISION: ${{ fromJSON(needs.versions.outputs.pins).feed.revision }}
+      VANTAGE_REVISION: ${{ fromJSON(needs.versions.outputs.pins).vantage.revision }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     environment: release
@@ -67,25 +124,45 @@ jobs:
 
       - name: Add Vantage theme feed
         run: |
-          grep -q '^src-git vantage ' feeds.conf.default || \
-            echo 'src-git vantage https://github.com/anothaDev/luci-theme-vantage.git^0f8d16f2ce25132e6a074575af16468524d2d5dd' >> feeds.conf.default
+          printf 'src-git vantage https://github.com/anothaDev/luci-theme-vantage.git^%s\n' "$VANTAGE_REVISION" >> feeds.conf.default
 
       - name: Install feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Install honk LuCI from pinned feed
+      - name: Install honk from official feed
         if: matrix.target == 'an7583'
         run: |
-          echo 'src-git daeuniverse https://github.com/daeuniverse/openwrt-packages.git^6157f709f52cdbf34c39e5fb69f4b81f468c10e6' >> feeds.conf.default
+          printf 'src-git daeuniverse https://github.com/daeuniverse/openwrt-packages.git^%s\n' "$HONK_FEED_REVISION" >> feeds.conf.default
           ./scripts/feeds update daeuniverse
-          ./scripts/feeds install -p daeuniverse luci-lib-daeuniverse luci-app-honk
-          test -L package/feeds/daeuniverse/luci-lib-daeuniverse
-          test -L package/feeds/daeuniverse/luci-app-honk
-          test -f package/honk/Makefile
-          test ! -e package/feeds/daeuniverse/honk
+          git clone --depth 1 --branch "$HONK_GIT_TAG" https://github.com/daeuniverse/honk.git feeds/daeuniverse/honk/src
+          test "$(git -C feeds/daeuniverse/honk/src rev-parse HEAD)" = "$HONK_REVISION"
+          ./scripts/feeds install -p daeuniverse vmlinux-btf-builtin honk luci-lib-daeuniverse luci-app-honk
+          test -L package/feeds/daeuniverse/honk
+          test ! -e package/honk
           test ! -e package/feeds/daeuniverse/dae
+
+      - name: Prepare honk Rust and eBPF toolchains
+        if: matrix.target == 'an7583'
+        run: |
+          sudo apt-get install -y --no-install-recommends libclang-dev libbpf-dev
+          src="$GITHUB_WORKSPACE/feeds/daeuniverse/honk/src"
+          stable="$(python3 -c 'import sys,tomllib; print(tomllib.load(open(sys.argv[1],"rb"))["toolchain"]["channel"])' "$src/rust-toolchain.toml")"
+          nightly="$(python3 -c 'import sys,tomllib; print(tomllib.load(open(sys.argv[1],"rb"))["toolchain"]["channel"])' "$src/crates/honk-ebpf/rust-toolchain.toml")"
+          rustup toolchain install "$stable" --profile minimal --component rustfmt --component clippy --target aarch64-unknown-linux-musl
+          rustup toolchain install "$nightly" --profile minimal --component rust-src --component llvm-tools
+          linker_version="$(awk -F= '$1 == "BPF_LINKER_VERSION" {print $2}' "$src/.github/ci/pins.env")"
+          linker_sha256="$(awk -F= '$1 == "BPF_LINKER_SHA256" {print $2}' "$src/.github/ci/pins.env")"
+          test -n "$linker_version" && test -n "$linker_sha256"
+          archive="$RUNNER_TEMP/honk-bpf-linker.tar.zst"
+          curl -fL --retry 3 -o "$archive" "https://github.com/aya-rs/bpf-linker/releases/download/v${linker_version}/bpf-linker-x86_64-unknown-linux-musl.tar.zst"
+          printf '%s  %s\n' "$linker_sha256" "$archive" | sha256sum -c -
+          honk_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          mkdir -p "$honk_cargo_home/bin"
+          tar --zstd -xf "$archive" -C "$honk_cargo_home/bin"
+          echo "$honk_cargo_home/bin" >> "$GITHUB_PATH"
+          "$honk_cargo_home/bin/bpf-linker" --version
 
       - name: Load repository signing key
         env:
@@ -108,7 +185,7 @@ jobs:
             ./scripts/kconfig.pl + .config configs/honk.config > .config.next
             mv .config.next .config
           fi
-          make defconfig
+          make defconfig HONK_VERSION="${HONK_VERSION:-}" HONK_GIT_TAG="${HONK_GIT_TAG:-}"
 
       - name: Check theme options early
         run: |
@@ -126,13 +203,24 @@ jobs:
           grep -q '^CONFIG_PACKAGE_luci-app-honk=y$' .config
           grep -q '^CONFIG_PACKAGE_luci-i18n-daeuniverse-zh-cn=y$' .config
           grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' .config
+          grep -q '^CONFIG_PACKAGE_vmlinux-btf-builtin=y$' .config
+          if grep -q '^CONFIG_PACKAGE_vmlinux-btf=y$' .config; then
+            echo 'External BTF must not be selected with the built-in BTF provider' >&2
+            exit 1
+          fi
+          grep -q '^CONFIG_PACKAGE_v2ray-geoip=y$' .config
+          grep -q '^CONFIG_PACKAGE_v2ray-geosite=y$' .config
+          if grep -Eq '^CONFIG_PACKAGE_(dae|daed|luci-app-dae|luci-app-daed)=y$' .config; then
+            echo 'dae packages must not be selected in the honk firmware' >&2
+            exit 1
+          fi
           ! grep -q '^CONFIG_KERNEL_DEBUG_INFO_REDUCED=y$' .config
 
       - name: Download sources
-        run: make download -j"$(nproc)"
+        run: make download -j"$(nproc)" HONK_VERSION="${HONK_VERSION:-}" HONK_GIT_TAG="${HONK_GIT_TAG:-}"
 
       - name: Build ${{ matrix.target }}
-        run: make -j"$(nproc)"
+        run: make -j"$(nproc)" V=s HONK_VERSION="${HONK_VERSION:-}" HONK_GIT_TAG="${HONK_GIT_TAG:-}"
 
       - name: Verify theme package
         run: |
@@ -151,6 +239,13 @@ jobs:
           grep -Eq '^luci-lib-daeuniverse ' "$manifest"
           grep -Eq '^luci-app-honk ' "$manifest"
           grep -Eq '^luci-i18n-daeuniverse-zh-cn ' "$manifest"
+          grep -Eq '^vmlinux-btf-builtin ' "$manifest"
+          grep -Eq '^v2ray-geoip ' "$manifest"
+          grep -Eq '^v2ray-geosite ' "$manifest"
+          if grep -Eq '^(dae|daed|luci-app-dae|luci-app-daed) ' "$manifest"; then
+            echo 'Unexpected dae package in the honk firmware' >&2
+            exit 1
+          fi
           grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' bin/targets/airoha/an7583/config.buildinfo
           test -n "$(find bin/packages -type f \( -name 'honk-*.apk' -o -name 'honk-*.ipk' \) -print -quit)"
           vmlinux="$(find build_dir -maxdepth 3 -type f -path '*linux-airoha_an7583/vmlinux' -print -quit)"
@@ -158,7 +253,10 @@ jobs:
           readelf -S "$vmlinux" | grep -q '\.BTF'
 
       - name: Pack ${{ matrix.target }}
+        env:
+          RESOLVED_VERSIONS: ${{ needs.versions.outputs.pins }}
         run: |
+          printf '%s\n' "$RESOLVED_VERSIONS" > "bin/targets/airoha/${{ matrix.target }}/source-versions.json"
           mkdir release
           tar --zstd -cf "release/ponwrt-${{ matrix.target }}.tar.zst" \
             -C bin/targets/airoha "${{ matrix.target }}"

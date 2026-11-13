@@ -1,6 +1,6 @@
 # 本 Fork 的自动同步与构建
 
-本仓库跟踪 `pbs05/ponwrt` 的 `master`。Fork 专用配置和说明分别位于 `.github/workflows/sync-upstream.yml` 与本文件。上游源码和原有 README 保持原样；`.github/workflows/release.yml` 仅包含下述发布权限修复。
+本仓库跟踪 `pbs05/ponwrt` 的 `master`。Fork 维护自动同步和独立构建配置；上游源码和原有 README 保持原样，发布工作流增加 feeds 准备、构建检查及标签发布修复。
 
 ## 自动检查
 
@@ -12,21 +12,21 @@
 
 ## honk
 
-`package/honk` 把 honk 打包进 AN7583 固件，并自动安装为 `/usr/bin/honk-core`、`/etc/init.d/honk`、`/etc/config/honk` 和 `/etc/honk/config.dae`。同时默认安装 `luci-lib-daeuniverse`、`luci-app-honk` 和 `luci-i18n-daeuniverse-zh-cn`，在 LuCI 的“服务 → honk”中管理服务状态、配置文件和服务日志。
+AN7583 固件通过官方 daeuniverse/openwrt-packages feed 构建并预装 `honk`、`luci-lib-daeuniverse`、`luci-app-honk` 和 `luci-i18n-daeuniverse-zh-cn`。中文语言包由共享库的 `po/zh_Hans` 生成，在 LuCI 的“服务 → honk”中管理服务状态、配置文件和服务日志。本仓库不再保留 `package/honk/` 或 LuCI 源码副本。
 
-两个 LuCI 包通过 daeuniverse/openwrt-packages feed 引入，固定到提交 `6157f709f52cdbf34c39e5fb69f4b81f468c10e6`。构建先安装基础 feeds，再追加该 feed，并只选择 `luci-lib-daeuniverse` 和 `luci-app-honk`；中文语言包由共享库的 `po/zh_Hans` 生成。本仓库不再保留这两个 LuCI 包的源码副本。官方依赖的 `flock` 由 PONWrt 基础仓库的 util-linux 提供，`coreutils-timeout` 由 packages feed 提供。
+每次构建启动时，`Resolve latest honk and Vantage releases` 查询最新已发布版本（包括 beta/rc、排除草稿和 debug 滚动标签），解析 honk、Vantage 的实际源码提交及官方 daeuniverse feed 的最新 main 提交。两个目标共享同一份结果，构建过程中不再漂移。实际版本和提交会写入固件归档中的 `source-versions.json`。构建先安装基础 feeds，再追加官方 honk feed，并只选择 honk、两个 LuCI 包和 `vmlinux-btf-builtin`；honk 源码检出到 feed 的 `honk/src`。init、UCI 配置和默认配置由官方 feed 提供。
 
-本地 `package/honk` 保持不变，不安装该 feed 的 honk 源码包。**不会安装 `dae`、`luci-app-dae` 或 `luci-app-daed`**：dae 与 honk 会争用 `dae0`/`daens` 和相同接口，二者不能同时运行。服务默认停用；修改配置后执行 `/etc/init.d/honk enable && /etc/init.d/honk start`，也可从 LuCI 页面操作。
+**不会安装 `dae`、`luci-app-dae` 或 `luci-app-daed`**：dae 与 honk 会争用 `dae0`/`daens` 和相同接口，二者不能同时运行。配置和 manifest 检查都会拒绝这些包。服务默认停用；修改配置后执行 `/etc/init.d/honk enable && /etc/init.d/honk start`，也可从 LuCI 页面操作。
 
-honk 本体使用上游官方发布的 aarch64 静态 musl `stock-full` 构建（含 Clash API、native API 和 doona 界面），由上游 CI 从源码编译；本仓库只负责校验、打包和装进固件。这样不在 OpenWrt 构建中引入 Rust nightly、bpf-linker 和 BoringSSL 交叉编译链，避免固件构建随机失败。版本、文件名和 SHA-256 固定在 `package/honk/release.mk`。
+honk 本体和 eBPF 对象由本次 Actions 从源码构建，使用该源码要求的 Rust stable/nightly 及校验 SHA-256 的 bpf-linker；doona 界面由官方构建脚本下载并校验。功能为官方 feed 的 full 构建（包括 Clash API、native API 和嵌入式界面），链接本次 PONWrt 的 musl 与 C++ 运行库。相比复用官方二进制，首次构建时间、磁盘和网络需求更高。
 
 honk 的构建选项放在独立的 `configs/honk.config`，仅在 AN7583 目标构建时合并；上游 `configs/an7583.config` 保持原样，减少同步冲突。
 
-运行时要求：Linux 6.12+（本目标为 6.18）、root、bpffs 和内核 BTF。`configs/honk.config` 已启用 `CONFIG_KERNEL_DEBUG_INFO_BTF`，并关闭会阻止 BTF 的 `CONFIG_KERNEL_DEBUG_INFO_REDUCED`；`CGROUP_BPF` 原本已启用，TC/TCX 所需的 `NET_CLS_ACT` 由 `kmod-sched-core` 选择。发布工作流会校验内核 vmlinux 的 `.BTF` 段、`honk` 及三个 LuCI 软件包和固件 manifest，任一缺失都会让构建失败，避免产出“装了但不能运行”的固件。
+运行时要求：Linux 6.12+（当前目标为 6.18）、root、bpffs 和内核 BTF。`configs/honk.config` 启用内核 BTF，并选择 `vmlinux-btf-builtin` 满足官方依赖，不安装需要额外 BTF 文件的 `vmlinux-btf`。官方依赖的 `v2ray-geoip`、`v2ray-geosite`、`flock` 和 `coreutils-timeout` 由 PONWrt 基础仓库或 packages feed 提供。配置及产物检查会校验 BTF、honk、中文 LuCI、地理数据和 dae 禁用状态。
 
-主题使用 `luci-theme-vantage` 和中文包 `luci-i18n-vantage-theme-zh-cn`，通过构建时追加的 Vantage feed 安装（固定到 v1.0.20 提交 `0f8d16f2`），不把主题源码复制进本仓库。主题自带的 `30_luci-theme-vantage` 会在首次启动时把默认主题设为 Vantage。`configs/theme.config` 同时关闭 `luci-theme-argon` 和 `luci-app-argon-config`；两个编译目标都会应用该片段。
+主题使用 `luci-theme-vantage` 和中文包 `luci-i18n-vantage-theme-zh-cn`，通过构建启动时解析的最新 Vantage Release 对应 feed 提交安装，不固定为仓库编写时的版本。主题自带的 uci-defaults 在首次安装时将默认主题设为 Vantage。`configs/theme.config` 关闭 argon 及其配置包；两个编译目标都会应用该片段。
 
-`Sync honk release` 每小时检查 `daeuniverse/honk` 的 Releases（包括 beta/rc 预发布，排除 debug 标签）。发现新版本后更新 `release.mk`，提交并用新标签触发 `Release PonWrt` 编译全部目标。跨仓库 Release 没有可用的直接 webhook（需要 honk 仓库的管理权限），所以采用定时轮询；GitHub 定时任务可能延迟。
+`Sync honk release` 每小时检查 `daeuniverse/honk` 的 Releases（包括 beta/rc 预发布，排除 debug 标签）。`configs/honk-release.json` 只记录上次观察到的发布版本，用于判断是否触发构建，不限制本次构建版本。发现新版本后更新记录并触发 `Release PonWrt`；实际构建会重新查询 honk、Vantage 和官方 feed 的最新版本。Vantage 单独发版不额外触发构建，但下一次构建会自动使用它的最新版。GitHub 定时任务可能延迟。
 
 ## 固件与缓存
 
@@ -40,6 +40,6 @@ honk 的构建选项放在独立的 `configs/honk.config`，仅在 AN7583 目标
 
 ## 同步与调度限制
 
-自动同步使用合并，不强制覆盖分支。目前新增 `sync-upstream.yml`、`honk-release.yml`、`package/honk/`、独立配置片段和本文件；LuCI 包及 Vantage 主题由固定版本的 feeds 引入。`sync-upstream` 与 `honk-release` 共用 `master-write` 并发组，避免两个任务同时写 master。若上游修改 `release.yml` 的同一段或新增同名文件，仍可能发生冲突，届时同步任务会报错。
+自动同步使用合并，不强制覆盖分支。本 Fork 只维护工作流、发版观察记录、独立配置片段和说明文件；honk、LuCI 包及 Vantage 主题均由构建时解析的官方 feeds 引入。`sync-upstream` 与 `honk-release` 共用 `master-write` 并发组，避免同时写 master。若上游修改 `release.yml` 的同一段或新增同名文件，仍可能冲突，届时同步任务会报错。
 
 GitHub 定时任务可能排队延迟，整点尤其容易出现延迟。公开仓库连续 60 天没有活动时，GitHub 会自动禁用定时工作流，届时需要在 Actions 页面重新启用。
