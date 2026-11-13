@@ -87,6 +87,14 @@ jobs:
             configs/release.config > .config
           make defconfig
 
+      - name: Check honk kernel options early
+        if: matrix.target == 'an7583'
+        run: |
+          set -euo pipefail
+          grep -q '^CONFIG_PACKAGE_honk=y$' .config
+          grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' .config
+          ! grep -q '^CONFIG_KERNEL_DEBUG_INFO_REDUCED=y$' .config
+
       - name: Download sources
         run: make download -j"$(nproc)"
 
