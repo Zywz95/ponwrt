@@ -65,6 +65,11 @@ jobs:
           restore-keys: |
             ponwrt-dl-${{ matrix.target }}-
 
+      - name: Add Vantage theme feed
+        run: |
+          grep -q '^src-git vantage ' feeds.conf.default || \
+            echo 'src-git vantage https://github.com/anothaDev/luci-theme-vantage.git^0f8d16f2ce25132e6a074575af16468524d2d5dd' >> feeds.conf.default
+
       - name: Install feeds
         run: |
           ./scripts/feeds update -a
@@ -82,17 +87,23 @@ jobs:
 
       - name: Configure ${{ matrix.target }}
         run: |
+          ./scripts/kconfig.pl + \
+            "configs/${{ matrix.target }}.config" \
+            configs/release.config > .config
+          ./scripts/kconfig.pl + .config configs/theme.config > .config.next
+          mv .config.next .config
           if [ "${{ matrix.target }}" = "an7583" ]; then
-            ./scripts/kconfig.pl + + \
-              "configs/${{ matrix.target }}.config" \
-              configs/release.config \
-              configs/honk.config > .config
-          else
-            ./scripts/kconfig.pl + \
-              "configs/${{ matrix.target }}.config" \
-              configs/release.config > .config
+            ./scripts/kconfig.pl + .config configs/honk.config > .config.next
+            mv .config.next .config
           fi
           make defconfig
+
+      - name: Check theme options early
+        run: |
+          set -euo pipefail
+          grep -q '^CONFIG_PACKAGE_luci-theme-vantage=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-i18n-vantage-theme-zh-cn=y$' .config
+          ! grep -q '^CONFIG_PACKAGE_luci-theme-argon=y$' .config
 
       - name: Check honk kernel options early
         if: matrix.target == 'an7583'
@@ -110,6 +121,14 @@ jobs:
 
       - name: Build ${{ matrix.target }}
         run: make -j"$(nproc)"
+
+      - name: Verify theme package
+        run: |
+          set -euo pipefail
+          manifest="$(ls bin/targets/airoha/${{ matrix.target }}/*.manifest)"
+          grep -Eq '^luci-theme-vantage ' "$manifest"
+          grep -Eq '^luci-i18n-vantage-theme-zh-cn ' "$manifest"
+          ! grep -Eq '^luci-theme-argon ' "$manifest"
 
       - name: Verify honk package and kernel BTF
         if: matrix.target == 'an7583'

@@ -20,6 +20,8 @@ honk 的构建选项放在独立的 `configs/honk.config`，仅在 AN7583 目标
 
 运行时要求：Linux 6.12+（本目标为 6.18）、root、bpffs 和内核 BTF。`configs/honk.config` 已启用 `CONFIG_KERNEL_DEBUG_INFO_BTF`，并关闭会阻止 BTF 的 `CONFIG_KERNEL_DEBUG_INFO_REDUCED`；`CGROUP_BPF` 原本已启用，TC/TCX 所需的 `NET_CLS_ACT` 由 `kmod-sched-core` 选择。发布工作流会校验内核 vmlinux 的 `.BTF` 段、`honk` 及三个 LuCI 软件包和固件 manifest，任一缺失都会让构建失败，避免产出“装了但不能运行”的固件。
 
+主题使用 `luci-theme-vantage` 和中文包 `luci-i18n-vantage-theme-zh-cn`，通过构建时追加的 Vantage feed 安装（固定到 v1.0.20 提交 `0f8d16f2`），不把主题源码复制进本仓库。主题自带的 `30_luci-theme-vantage` 会在首次启动时把默认主题设为 Vantage。`configs/theme.config` 同时关闭 `luci-theme-argon` 和 `luci-app-argon-config`；两个编译目标都会应用该片段。
+
 `Sync honk release` 每小时检查 `daeuniverse/honk` 的 Releases（包括 beta/rc 预发布，排除 debug 标签）。发现新版本后更新 `release.mk`，提交并用新标签触发 `Release PonWrt` 编译全部目标。跨仓库 Release 没有可用的直接 webhook（需要 honk 仓库的管理权限），所以采用定时轮询；GitHub 定时任务可能延迟。
 
 ## 固件与缓存
