@@ -248,7 +248,7 @@ jobs:
           fi
           grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' bin/targets/airoha/an7583/config.buildinfo
           test -n "$(find bin/packages -type f \( -name 'honk-*.apk' -o -name 'honk-*.ipk' \) -print -quit)"
-          vmlinux="$(find build_dir -maxdepth 3 -type f -path '*linux-airoha_an7583/vmlinux' -print -quit)"
+          vmlinux="$(find build_dir -maxdepth 4 -type f \( -name vmlinux.debug -o -name vmlinux.unstripped \) -print -quit)"
           test -n "$vmlinux"
           readelf -S "$vmlinux" | grep -q '\.BTF'
 
