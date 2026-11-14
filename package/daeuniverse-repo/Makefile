@@ -25,6 +25,9 @@ define Package/daeuniverse-repo/description
  add the kmods repository because this firmware uses a custom PONwrt kernel.
 endef
 
+
+define Build/Compile
+endef
 define Package/daeuniverse-repo/install
 	$(INSTALL_DIR) $(1)/etc/apk/keys
 	$(INSTALL_DATA) ./files/daeuniverse.pem $(1)/etc/apk/keys/daeuniverse.pem
