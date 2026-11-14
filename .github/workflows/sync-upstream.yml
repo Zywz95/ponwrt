@@ -79,7 +79,7 @@ jobs:
             // Explicit dispatch is required: GITHUB_TOKEN pushes do not trigger push workflows.
             await github.rest.actions.createWorkflowDispatch({
               owner, repo, workflow_id, ref: tag,
-              inputs: { tag, prerelease: 'true' }
+              inputs: { tag, prerelease: 'false' }
             });
             core.info(`Dispatched ${workflow_id} at ${buildSha} for ${upstreamSha}`);
             await core.summary

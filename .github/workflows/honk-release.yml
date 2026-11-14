@@ -96,7 +96,7 @@ jobs:
             const tag = `honk-${release.tag_name}-${builtSha.slice(0, 8)}`;
             await github.rest.actions.createWorkflowDispatch({
               owner, repo, workflow_id: releaseWorkflow, ref: branch,
-              inputs: { tag, prerelease: 'true' }
+              inputs: { tag, prerelease: 'false' }
             });
             core.info(`Dispatched ${releaseWorkflow} for honk ${release.tag_name} at ${builtSha}`);
             await core.summary
