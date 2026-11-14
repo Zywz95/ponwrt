@@ -132,7 +132,6 @@ jobs:
           ./scripts/feeds install -a
 
       - name: Install honk from official feed
-        if: matrix.target == 'an7583'
         run: |
           printf 'src-git daeuniverse https://github.com/daeuniverse/openwrt-packages.git^%s\n' "$HONK_FEED_REVISION" >> feeds.conf.default
           ./scripts/feeds update daeuniverse
@@ -144,7 +143,6 @@ jobs:
           test ! -e package/feeds/daeuniverse/dae
 
       - name: Prepare honk Rust and eBPF toolchains
-        if: matrix.target == 'an7583'
         run: |
           sudo apt-get install -y --no-install-recommends libclang-dev libbpf-dev
           src="$GITHUB_WORKSPACE/feeds/daeuniverse/honk/src"
@@ -181,10 +179,8 @@ jobs:
             configs/release.config > .config
           ./scripts/kconfig.pl + .config configs/theme.config > .config.next
           mv .config.next .config
-          if [ "${{ matrix.target }}" = "an7583" ]; then
-            ./scripts/kconfig.pl + .config configs/honk.config > .config.next
-            mv .config.next .config
-          fi
+          ./scripts/kconfig.pl + .config configs/honk.config > .config.next
+          mv .config.next .config
           make defconfig HONK_VERSION="${HONK_VERSION:-}" HONK_GIT_TAG="${HONK_GIT_TAG:-}"
 
       - name: Check theme options early
@@ -195,7 +191,6 @@ jobs:
           ! grep -q '^CONFIG_PACKAGE_luci-theme-argon=y$' .config
 
       - name: Check honk kernel options early
-        if: matrix.target == 'an7583'
         run: |
           set -euo pipefail
           grep -q '^CONFIG_PACKAGE_daeuniverse-repo=y$' .config
@@ -231,10 +226,10 @@ jobs:
           ! grep -Eq '^luci-theme-argon ' "$manifest"
 
       - name: Verify honk package and kernel BTF
-        if: matrix.target == 'an7583'
         run: |
           set -euo pipefail
-          manifest="$(ls bin/targets/airoha/an7583/*.manifest)"
+          manifest="$(ls bin/targets/airoha/${{ matrix.target }}/*.manifest)"
+          grep -Eq '^honk ' "$manifest"
           grep -Eq '^daeuniverse-repo ' "$manifest"
           grep -Eq '^luci-lib-daeuniverse ' "$manifest"
           grep -Eq '^luci-app-honk ' "$manifest"
@@ -246,9 +241,9 @@ jobs:
             echo 'Unexpected dae package in the honk firmware' >&2
             exit 1
           fi
-          grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' bin/targets/airoha/an7583/config.buildinfo
+          grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' "bin/targets/airoha/${{ matrix.target }}/config.buildinfo"
           test -n "$(find bin/packages -type f \( -name 'honk-*.apk' -o -name 'honk-*.ipk' \) -print -quit)"
-          vmlinux="$(find build_dir -maxdepth 4 -type f \( -name vmlinux.debug -o -name vmlinux.unstripped \) -print -quit)"
+          vmlinux="$(find build_dir -maxdepth 4 -type f -path "*linux-airoha_${{ matrix.target }}/*" \( -name vmlinux.debug -o -name vmlinux.unstripped \) -print -quit)"
           test -n "$vmlinux"
           readelf -S "$vmlinux" | grep -q '\.BTF'
 
