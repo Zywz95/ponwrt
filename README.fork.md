@@ -16,6 +16,8 @@ AN7583 固件通过官方 daeuniverse/openwrt-packages feed 构建并预装 `hon
 
 每次构建启动时，`Resolve latest honk and Vantage releases` 查询最新已发布版本（包括 beta/rc、排除草稿和 debug 滚动标签），解析 honk、Vantage 的实际源码提交及官方 daeuniverse feed 的最新 main 提交。两个目标共享同一份结果，构建过程中不再漂移。实际版本和提交会写入固件归档中的 `source-versions.json`。构建先安装基础 feeds，再追加官方 honk feed，并只选择 honk、两个 LuCI 包和 `vmlinux-btf-builtin`；honk 源码检出到 feed 的 `honk/src`。init、UCI 配置和默认配置由官方 feed 提供。
 
+固件同时安装 `daeuniverse-repo`：它写入官方公钥和用户态 packages 仓库到 `/etc/apk/keys/daeuniverse.pem` 与 `/etc/apk/repositories.d/daeuniverse.list`。刷机后可执行 `apk update`，再用 `apk upgrade honk@daeuniverse luci-app-honk@daeuniverse luci-i18n-daeuniverse-zh-cn@daeuniverse` 更新；仓库不包含 kmods，避免替换 PONwrt 自定义内核。
+
 **不会安装 `dae`、`luci-app-dae` 或 `luci-app-daed`**：dae 与 honk 会争用 `dae0`/`daens` 和相同接口，二者不能同时运行。配置和 manifest 检查都会拒绝这些包。服务默认停用；修改配置后执行 `/etc/init.d/honk enable && /etc/init.d/honk start`，也可从 LuCI 页面操作。
 
 honk 本体和 eBPF 对象由本次 Actions 从源码构建，使用该源码要求的 Rust stable/nightly 及校验 SHA-256 的 bpf-linker；doona 界面由官方构建脚本下载并校验。功能为官方 feed 的 full 构建（包括 Clash API、native API 和嵌入式界面），链接本次 PONWrt 的 musl 与 C++ 运行库。相比复用官方二进制，首次构建时间、磁盘和网络需求更高。

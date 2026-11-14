@@ -198,7 +198,7 @@ jobs:
         if: matrix.target == 'an7583'
         run: |
           set -euo pipefail
-          grep -q '^CONFIG_PACKAGE_honk=y$' .config
+          grep -q '^CONFIG_PACKAGE_daeuniverse-repo=y$' .config
           grep -q '^CONFIG_PACKAGE_luci-lib-daeuniverse=y$' .config
           grep -q '^CONFIG_PACKAGE_luci-app-honk=y$' .config
           grep -q '^CONFIG_PACKAGE_luci-i18n-daeuniverse-zh-cn=y$' .config
@@ -235,7 +235,7 @@ jobs:
         run: |
           set -euo pipefail
           manifest="$(ls bin/targets/airoha/an7583/*.manifest)"
-          grep -Eq '^honk ' "$manifest"
+          grep -Eq '^daeuniverse-repo ' "$manifest"
           grep -Eq '^luci-lib-daeuniverse ' "$manifest"
           grep -Eq '^luci-app-honk ' "$manifest"
           grep -Eq '^luci-i18n-daeuniverse-zh-cn ' "$manifest"
