@@ -46,7 +46,7 @@ jobs:
               throw new Error('Upstream advanced during synchronization; run this workflow again.');
             }
 
-            const tag = `upstream-${upstreamSha}`;
+            const tag = `ponwrt-${upstreamSha.slice(0, 8)}`;
             let buildSha;
             try {
               const { data: ref } = await github.rest.git.getRef({

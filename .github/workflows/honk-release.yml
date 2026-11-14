@@ -91,9 +91,12 @@ jobs:
               return;
             }
 
-            // The tag keeps the release pinned to the exact commit that
-            // contains this honk version.
-            const tag = `honk-${release.tag_name}-${builtSha.slice(0, 8)}`;
+            // Include the upstream PONwrt revision so a PONwrt-only update
+            // receives a distinct firmware release even when honk is unchanged.
+            const { data: ponwrtHead } = await github.rest.git.getRef({
+              owner: 'pbs05', repo: 'ponwrt', ref: 'heads/master'
+            });
+            const tag = `ponwrt-${ponwrtHead.object.sha.slice(0, 8)}-honk-${release.tag_name}`;
             await github.rest.actions.createWorkflowDispatch({
               owner, repo, workflow_id: releaseWorkflow, ref: branch,
               inputs: { tag, prerelease: 'false' }
