@@ -1,0 +1,19 @@
+#!/bin/sh
+
+repo_root="${IPKG_INSTROOT:-}"
+entry_file="$repo_root/usr/share/vantage-repo/repository.list"
+custom_file="$repo_root/etc/apk/repositories.d/customfeeds.list"
+legacy_file="$repo_root/etc/apk/repositories.d/vantage.list"
+
+[ -s "$entry_file" ] || exit 1
+entry="$(cat "$entry_file")" || exit 1
+mkdir -p "$repo_root/etc/apk/repositories.d" || exit 1
+if ! grep -Fqx "$entry" "$custom_file" 2>/dev/null; then
+	printf '\n%s\n' "$entry" >> "$custom_file" || exit 1
+fi
+
+if [ -f "$legacy_file" ] && cmp -s "$legacy_file" "$entry_file"; then
+	rm "$legacy_file" || exit 1
+fi
+
+exit 0

@@ -193,7 +193,7 @@ jobs:
       - name: Check honk kernel options early
         run: |
           set -euo pipefail
-          grep -q '^CONFIG_PACKAGE_daeuniverse-repo=y$' .config
+          grep -q '^CONFIG_PACKAGE_vantage-repo=y$' .config
           grep -q '^CONFIG_PACKAGE_luci-lib-daeuniverse=y$' .config
           grep -q '^CONFIG_PACKAGE_luci-app-honk=y$' .config
           grep -q '^CONFIG_PACKAGE_luci-i18n-daeuniverse-zh-cn=y$' .config
@@ -230,7 +230,7 @@ jobs:
           set -euo pipefail
           manifest="$(ls bin/targets/airoha/${{ matrix.target }}/*.manifest)"
           grep -Eq '^honk ' "$manifest"
-          grep -Eq '^daeuniverse-repo ' "$manifest"
+          grep -Eq '^vantage-repo ' "$manifest"
           grep -Eq '^luci-lib-daeuniverse ' "$manifest"
           grep -Eq '^luci-app-honk ' "$manifest"
           grep -Eq '^luci-i18n-daeuniverse-zh-cn ' "$manifest"

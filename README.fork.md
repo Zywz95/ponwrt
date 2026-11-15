@@ -26,6 +26,13 @@ honk 使用官方 feed 的源码规则构建：源码检出到 feed 的 `honk/sr
 
 `daeuniverse-repo` 只添加用户态 packages 仓库和签名公钥，不添加 daeuniverse kmods 仓库。公钥位于 `/etc/apk/keys/daeuniverse.pem`。首启或升级该配置包时，脚本把仓库行追加到 LuCI APK 配置页可编辑的 `/etc/apk/repositories.d/customfeeds.list`，保留原有自定义源并避免重复添加。
 
+
+Vantage 的运行时用户态仓库也由 `vantage-repo` 包写入 `/etc/apk/repositories.d/customfeeds.list`，签名公钥写入 `/etc/apk/keys/vantage-signing.pem`。更新主题时执行：
+
+```sh
+apk update
+apk upgrade luci-theme-vantage@vantage luci-i18n-vantage-theme-zh-cn@vantage
+```
 旧版本把仓库写在独立的 `daeuniverse.list`，APK 可以读取，但 LuCI 配置页不显示该文件。迁移脚本只删除与原始内容完全一致的旧文件；用户修改过的文件保留。系统升级保留的 `customfeeds.list` 也会通过首启脚本补齐仓库行。该配置包不修改内核。刷机后可更新：
 
 ```sh
