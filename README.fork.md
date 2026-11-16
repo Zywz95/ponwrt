@@ -14,6 +14,8 @@ Nokia XG-040G-MF 使用 AN7583，刷机时必须选择 `an7583` 归档中的 `no
 
 honk 使用官方 feed 的源码规则构建：源码检出到 feed 的 `honk/src`，安装源码指定的 Rust stable/nightly、校验过的 bpf-linker，并构建 eBPF 对象、honk-core 和嵌入式 doona UI。运行时要求 Linux 6.12+、root、bpffs 和内核 BTF；当前 PONwrt 内核为 6.18。
 
+Fork 选项统一放在 `configs/ponwrt-fork.config`，同时应用于 AN7581 和 AN7583；上游的两个目标 config 文件保持原样。
+
 默认安装：
 
 - `honk`

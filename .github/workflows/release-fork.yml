@@ -178,12 +178,9 @@ jobs:
           ./scripts/kconfig.pl + \
             "configs/${{ matrix.target }}.config" \
             configs/release.config > .config
-          ./scripts/kconfig.pl + .config configs/theme.config > .config.next
-          mv .config.next .config
-          ./scripts/kconfig.pl + .config configs/honk.config > .config.next
+          ./scripts/kconfig.pl + .config configs/ponwrt-fork.config > .config.next
           mv .config.next .config
           make defconfig HONK_VERSION="${HONK_VERSION:-}" HONK_GIT_TAG="${HONK_GIT_TAG:-}"
-
       - name: Check theme options early
         run: |
           set -euo pipefail
