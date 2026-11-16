@@ -6,8 +6,6 @@
 
 固件工作流同时构建 `an7581` 和 `an7583`。honk、LuCI 管理页面、中文语言包、Vantage 主题和运行时仓库配置通过独立配置片段及 feeds 进入两个目标；不安装 `dae`、`luci-app-dae` 或 `luci-app-daed`。
 
-Nokia XG-040G-MF 使用 AN7583，刷机时必须选择 `an7583` 归档中的 `nokia_xg-040g-mf-ubi` 镜像。AN7581 归档中的 MD/TF 设备镜像不适用于 MF。
-
 ## honk
 
 每次构建开始时，Actions 查询最新的 honk Release、Vantage Release 和 daeuniverse/openwrt-packages feed 提交。honk Release 包括 beta/rc 预发布，排除草稿和 debug 滚动版本；两个目标共享同一组解析结果，实际标签和源码提交写入固件归档的 `source-versions.json`。
