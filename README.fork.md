@@ -4,7 +4,7 @@
 
 ## 构建目标
 
-固件工作流同时构建 `an7581` 和 `an7583`。honk、LuCI 管理页面、中文语言包、Vantage 主题和运行时仓库配置通过独立配置片段及 feeds 进入两个目标；不安装 `dae`、`luci-app-dae` 或 `luci-app-daed`。
+固件工作流同时构建 `an7581` 和 `an7583`。honk、LuCI 管理页面、中文语言包、Vantage 主题和运行时仓库配置通过独立配置片段及 feeds 进入两个目标。
 
 ## honk
 
