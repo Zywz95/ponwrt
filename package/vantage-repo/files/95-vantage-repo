@@ -9,7 +9,10 @@ legacy_file="$repo_root/etc/apk/repositories.d/vantage.list"
 entry="$(cat "$entry_file")" || exit 1
 mkdir -p "$repo_root/etc/apk/repositories.d" || exit 1
 if ! grep -Fqx "$entry" "$custom_file" 2>/dev/null; then
-	printf '\n%s\n' "$entry" >> "$custom_file" || exit 1
+	if [ -s "$custom_file" ] && [ "$(tail -c 1 "$custom_file" | od -An -t x1 | tr -d '[:space:]')" != "0a" ]; then
+		printf '\n' >> "$custom_file" || exit 1
+	fi
+	printf '%s\n' "$entry" >> "$custom_file" || exit 1
 fi
 
 if [ -f "$legacy_file" ] && cmp -s "$legacy_file" "$entry_file"; then
