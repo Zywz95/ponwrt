@@ -220,7 +220,7 @@ jobs:
 
       - name: Verify theme package
         run: |
-          set -euo pipefail
+          manifest="$(ls bin/targets/airoha/${{ matrix.target }}/*.manifest)"
           grep -Eq '^luci-app-vantage ' "$manifest"
           grep -Eq '^luci-i18n-vantage-zh-cn ' "$manifest"
           grep -Eq '^luci-theme-vantage ' "$manifest"
