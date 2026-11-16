@@ -214,7 +214,7 @@ jobs:
         run: make download -j"$(nproc)" HONK_VERSION="${HONK_VERSION:-}" HONK_GIT_TAG="${HONK_GIT_TAG:-}"
 
       - name: Build ${{ matrix.target }}
-        run: make -j"$(nproc)" V=s HONK_VERSION="${HONK_VERSION:-}" HONK_GIT_TAG="${HONK_GIT_TAG:-}"
+        run: make -j"$(nproc)" HONK_VERSION="${HONK_VERSION:-}" HONK_GIT_TAG="${HONK_GIT_TAG:-}"
 
       - name: Verify theme package
         run: |
