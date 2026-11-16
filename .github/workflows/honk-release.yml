@@ -31,7 +31,7 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const branch = 'master';
-            const releaseWorkflow = 'release.yml';
+            const releaseWorkflow = 'release-fork.yml';
             const releaseFile = 'configs/honk-release.json';
 
             const releases = await github.paginate(github.rest.repos.listReleases, {

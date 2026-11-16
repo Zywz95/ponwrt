@@ -1,0 +1,321 @@
+name: Release PonWrt Fork
+run-name: Release PonWrt ${{ inputs.tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag
+        required: true
+        type: string
+      prerelease:
+        description: Mark as prerelease
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  versions:
+    name: Resolve latest honk and Vantage releases
+    runs-on: ubuntu-24.04
+    outputs:
+      pins: ${{ steps.resolve.outputs.result }}
+    steps:
+      - name: Resolve current releases and source commits
+        id: resolve
+        uses: actions/github-script@v8
+        with:
+          script: |
+            async function latest(owner, repo) {
+              const releases = await github.paginate(github.rest.repos.listReleases, {
+                owner, repo, per_page: 100
+              });
+              const release = releases
+                .filter(item => !item.draft && /^v?\d+\.\d+\.\d+/.test(item.tag_name))
+                .sort((a, b) => new Date(b.published_at) - new Date(a.published_at))[0];
+              if (!release) throw new Error(`No versioned release for ${owner}/${repo}`);
+              const { data: ref } = await github.rest.git.getRef({
+                owner, repo, ref: `tags/${release.tag_name}`
+              });
+              let object = ref.object;
+              while (object.type === 'tag') {
+                const { data: tag } = await github.rest.git.getTag({
+                  owner, repo, tag_sha: object.sha
+                });
+                object = tag.object;
+              }
+              if (object.type !== 'commit') throw new Error('Release tag is not a commit');
+              return { tag: release.tag_name, revision: object.sha };
+            }
+            const [honk, vantage, feed] = await Promise.all([
+              latest('daeuniverse', 'honk'),
+              latest('anothaDev', 'luci-theme-vantage'),
+              github.rest.git.getRef({ owner: 'daeuniverse', repo: 'openwrt-packages', ref: 'heads/main' })
+            ]);
+            honk.version = honk.tag.replace(/^v/, '')
+              .replace(/-alpha\./, '_alpha').replace(/-beta\./, '_beta').replace(/-rc\./, '_rc');
+            const pins = { resolved_at: new Date().toISOString(), honk, vantage,
+              feed: { revision: feed.data.object.sha } };
+            core.info(JSON.stringify(pins, null, 2));
+            await core.summary.addHeading('Source versions for this build').addTable([
+              ['Source', 'Version', 'Commit'],
+              ['honk', honk.tag, honk.revision],
+              ['Vantage', vantage.tag, vantage.revision],
+              ['daeuniverse feed', 'main', pins.feed.revision]
+            ]).write();
+            return pins;
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: versions
+    env:
+      HONK_GIT_TAG: ${{ fromJSON(needs.versions.outputs.pins).honk.tag }}
+      HONK_VERSION: ${{ fromJSON(needs.versions.outputs.pins).honk.version }}
+      HONK_REVISION: ${{ fromJSON(needs.versions.outputs.pins).honk.revision }}
+      HONK_FEED_REVISION: ${{ fromJSON(needs.versions.outputs.pins).feed.revision }}
+      VANTAGE_REVISION: ${{ fromJSON(needs.versions.outputs.pins).vantage.revision }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - an7581
+          - an7583
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free build space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
+
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk \
+            gettext git g++-multilib gcc-multilib gperf help2man intltool \
+            libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
+            libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev \
+            libtool libyaml-dev lld llvm ninja-build p7zip-full patch pkgconf \
+            python3 python3-docutils python3-pip python3-ply python3-pyelftools \
+            qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo \
+            uglifyjs unzip wget xmlto xxd zlib1g-dev zstd
+
+      - name: Cache downloads
+        uses: actions/cache@v4
+        with:
+          path: dl
+          key: ponwrt-dl-${{ matrix.target }}-${{ hashFiles('feeds.conf.default', 'configs/*.config') }}
+          restore-keys: |
+            ponwrt-dl-${{ matrix.target }}-
+
+      - name: Add Vantage theme feed
+        run: |
+          printf 'src-git vantage https://github.com/anothaDev/luci-theme-vantage.git^%s\n' "$VANTAGE_REVISION" >> feeds.conf.default
+
+      - name: Install feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Install honk from official feed
+        run: |
+          printf 'src-git daeuniverse https://github.com/daeuniverse/openwrt-packages.git^%s\n' "$HONK_FEED_REVISION" >> feeds.conf.default
+          ./scripts/feeds update daeuniverse
+          git clone --depth 1 --branch "$HONK_GIT_TAG" https://github.com/daeuniverse/honk.git feeds/daeuniverse/honk/src
+          test "$(git -C feeds/daeuniverse/honk/src rev-parse HEAD)" = "$HONK_REVISION"
+          ./scripts/feeds install -p daeuniverse vmlinux-btf-builtin honk luci-lib-daeuniverse luci-app-honk
+          test -L package/feeds/daeuniverse/honk
+          test ! -e package/honk
+          test ! -e package/feeds/daeuniverse/dae
+
+      - name: Prepare honk Rust and eBPF toolchains
+        run: |
+          sudo apt-get install -y --no-install-recommends libclang-dev libbpf-dev
+          src="$GITHUB_WORKSPACE/feeds/daeuniverse/honk/src"
+          stable="$(python3 -c 'import sys,tomllib; print(tomllib.load(open(sys.argv[1],"rb"))["toolchain"]["channel"])' "$src/rust-toolchain.toml")"
+          nightly="$(python3 -c 'import sys,tomllib; print(tomllib.load(open(sys.argv[1],"rb"))["toolchain"]["channel"])' "$src/crates/honk-ebpf/rust-toolchain.toml")"
+          rustup toolchain install "$stable" --profile minimal --component rustfmt --component clippy --target aarch64-unknown-linux-musl
+          rustup toolchain install "$nightly" --profile minimal --component rust-src --component llvm-tools
+          linker_version="$(awk -F= '$1 == "BPF_LINKER_VERSION" {print $2}' "$src/.github/ci/pins.env")"
+          linker_sha256="$(awk -F= '$1 == "BPF_LINKER_SHA256" {print $2}' "$src/.github/ci/pins.env")"
+          test -n "$linker_version" && test -n "$linker_sha256"
+          archive="$RUNNER_TEMP/honk-bpf-linker.tar.zst"
+          curl -fL --retry 3 -o "$archive" "https://github.com/aya-rs/bpf-linker/releases/download/v${linker_version}/bpf-linker-x86_64-unknown-linux-musl.tar.zst"
+          printf '%s  %s\n' "$linker_sha256" "$archive" | sha256sum -c -
+          honk_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          mkdir -p "$honk_cargo_home/bin"
+          tar --zstd -xf "$archive" -C "$honk_cargo_home/bin"
+          echo "$honk_cargo_home/bin" >> "$GITHUB_PATH"
+          "$honk_cargo_home/bin/bpf-linker" --version
+
+      - name: Load repository signing key
+        env:
+          PONWRT_APK_PRIVATE_KEY: ${{ secrets.PONWRT_APK_PRIVATE_KEY }}
+        run: |
+          if [ -n "$PONWRT_APK_PRIVATE_KEY" ]; then
+            umask 077
+            printf '%s\n' "$PONWRT_APK_PRIVATE_KEY" > private-key.pem
+            openssl ec -in private-key.pem -pubout -out public-key.pem
+          fi
+
+      - name: Configure ${{ matrix.target }}
+        run: |
+          ./scripts/kconfig.pl + \
+            "configs/${{ matrix.target }}.config" \
+            configs/release.config > .config
+          ./scripts/kconfig.pl + .config configs/theme.config > .config.next
+          mv .config.next .config
+          ./scripts/kconfig.pl + .config configs/honk.config > .config.next
+          mv .config.next .config
+          make defconfig HONK_VERSION="${HONK_VERSION:-}" HONK_GIT_TAG="${HONK_GIT_TAG:-}"
+
+      - name: Check theme options early
+        run: |
+          set -euo pipefail
+          grep -q '^CONFIG_PACKAGE_luci-app-vantage=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-i18n-vantage-zh-cn=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-i18n-vantage-theme-zh-cn=y$' .config
+          ! grep -q '^CONFIG_PACKAGE_luci-theme-argon=y$' .config
+
+      - name: Check honk kernel options early
+        run: |
+          set -euo pipefail
+          grep -q '^CONFIG_PACKAGE_vantage-repo=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-lib-daeuniverse=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-app-honk=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-i18n-daeuniverse-zh-cn=y$' .config
+          grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' .config
+          grep -q '^CONFIG_PACKAGE_vmlinux-btf-builtin=y$' .config
+          if grep -q '^CONFIG_PACKAGE_vmlinux-btf=y$' .config; then
+            echo 'External BTF must not be selected with the built-in BTF provider' >&2
+            exit 1
+          fi
+          grep -q '^CONFIG_PACKAGE_v2ray-geoip=y$' .config
+          grep -q '^CONFIG_PACKAGE_v2ray-geosite=y$' .config
+          if grep -Eq '^CONFIG_PACKAGE_(dae|daed|luci-app-dae|luci-app-daed)=y$' .config; then
+            echo 'dae packages must not be selected in the honk firmware' >&2
+            exit 1
+          fi
+          ! grep -q '^CONFIG_KERNEL_DEBUG_INFO_REDUCED=y$' .config
+
+      - name: Download sources
+        run: make download -j"$(nproc)" HONK_VERSION="${HONK_VERSION:-}" HONK_GIT_TAG="${HONK_GIT_TAG:-}"
+
+      - name: Build ${{ matrix.target }}
+        run: make -j"$(nproc)" V=s HONK_VERSION="${HONK_VERSION:-}" HONK_GIT_TAG="${HONK_GIT_TAG:-}"
+
+      - name: Verify theme package
+        run: |
+          manifest="$(ls bin/targets/airoha/${{ matrix.target }}/*.manifest)"
+          grep -Eq '^luci-app-vantage ' "$manifest"
+          grep -Eq '^luci-i18n-vantage-zh-cn ' "$manifest"
+          grep -Eq '^luci-theme-vantage ' "$manifest"
+          grep -Eq '^luci-i18n-vantage-theme-zh-cn ' "$manifest"
+          ! grep -Eq '^luci-theme-argon ' "$manifest"
+
+      - name: Verify honk package and kernel BTF
+        run: |
+          set -euo pipefail
+          manifest="$(ls bin/targets/airoha/${{ matrix.target }}/*.manifest)"
+          grep -Eq '^honk ' "$manifest"
+          grep -Eq '^vantage-repo ' "$manifest"
+          grep -Eq '^luci-lib-daeuniverse ' "$manifest"
+          grep -Eq '^luci-app-honk ' "$manifest"
+          grep -Eq '^luci-i18n-daeuniverse-zh-cn ' "$manifest"
+          grep -Eq '^vmlinux-btf-builtin ' "$manifest"
+          grep -Eq '^v2ray-geoip ' "$manifest"
+          grep -Eq '^v2ray-geosite ' "$manifest"
+          if grep -Eq '^(dae|daed|luci-app-dae|luci-app-daed) ' "$manifest"; then
+            echo 'Unexpected dae package in the honk firmware' >&2
+            exit 1
+          fi
+          grep -q '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$' "bin/targets/airoha/${{ matrix.target }}/config.buildinfo"
+          test -n "$(find bin/packages -type f \( -name 'honk-*.apk' -o -name 'honk-*.ipk' \) -print -quit)"
+          vmlinux="$(find build_dir -maxdepth 4 -type f -path "*linux-airoha_${{ matrix.target }}/*" \( -name vmlinux.debug -o -name vmlinux.unstripped \) -print -quit)"
+          test -n "$vmlinux"
+          readelf -S "$vmlinux" | grep -q '\.BTF'
+
+      - name: Pack ${{ matrix.target }}
+        env:
+          RESOLVED_VERSIONS: ${{ needs.versions.outputs.pins }}
+        run: |
+          printf '%s\n' "$RESOLVED_VERSIONS" > "bin/targets/airoha/${{ matrix.target }}/source-versions.json"
+          mkdir release
+          tar --zstd -cf "release/ponwrt-${{ matrix.target }}.tar.zst" \
+            -C bin/targets/airoha "${{ matrix.target }}"
+
+      - name: Upload ${{ matrix.target }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ponwrt-${{ matrix.target }}
+          path: release/*.tar.zst
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Create release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download firmware archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ponwrt-*
+          path: release
+          merge-multiple: true
+
+      - name: Create checksums
+        working-directory: release
+        run: sha256sum *.tar.zst > sha256sums
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          tag_ref="refs/tags/$RELEASE_TAG"
+          existing_ref="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$RELEASE_TAG" \
+            --jq '.[] | .ref' | { grep -Fx "$tag_ref" || test "$?" -eq 1; })"
+          if [ -z "$existing_ref" ]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="$tag_ref" -f sha="$GITHUB_SHA"
+          fi
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
+          if [ "$tag_sha" != "$GITHUB_SHA" ]; then
+            echo "Release tag does not match the built commit" >&2
+            exit 1
+          fi
+
+          args=(
+            "$RELEASE_TAG"
+            release/*.tar.zst
+            release/sha256sums
+            --repo "$GITHUB_REPOSITORY"
+            --verify-tag
+            --title "PonWrt $RELEASE_TAG"
+            --generate-notes
+          )
+          if [ "$PRERELEASE" = true ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"

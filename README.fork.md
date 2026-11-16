@@ -63,3 +63,6 @@ Vantage 通过构建时 feed 安装，每次构建解析最新 Release，并同�
 ## 缓存与限制
 
 每次构建使用新的 GitHub runner。`dl/` 下载目录使用 Actions cache，但工具链和编译产物不会持久化，因此源码构建仍可能耗时较长。定时任务可能因 GitHub 排队延迟；公开仓库连续 60 天无活动时，GitHub 可能自动停用定时工作流。
+
+
+手动编译请运行 Actions 中的 `Release PonWrt Fork`；上游原版 `Release PonWrt` 仅保留作同步参考，不用于本 Fork 的 honk/Vantage 构建。

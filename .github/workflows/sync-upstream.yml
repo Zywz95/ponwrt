@@ -25,7 +25,7 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             const branch = 'master';
-            const workflow_id = 'release.yml';
+            const workflow_id = 'release-fork.yml';
 
             const { data: sync } = await github.rest.repos.mergeUpstream({
               owner, repo, branch
