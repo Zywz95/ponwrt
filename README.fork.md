@@ -24,16 +24,7 @@ Fork 选项统一放在 `configs/ponwrt-fork.config`，同时应用于 AN7581 �
 - `v2ray-geoip`、`v2ray-geosite`
 - `daeuniverse-repo`
 
-`daeuniverse-repo` 只添加用户态 packages 仓库和签名公钥，不添加 daeuniverse kmods 仓库。公钥位于 `/etc/apk/keys/daeuniverse.pem`。首启或升级该配置包时，脚本把仓库行追加到 LuCI APK 配置页可编辑的 `/etc/apk/repositories.d/customfeeds.list`，保留原有自定义源并避免重复添加。
-
-
-Vantage 的运行时用户态仓库也由 `vantage-repo` 包写入 `/etc/apk/repositories.d/customfeeds.list`，签名公钥写入 `/etc/apk/keys/vantage-signing.pem`。更新主题时执行：
-
-```sh
-apk update
-apk upgrade luci-theme-vantage@vantage luci-i18n-vantage-theme-zh-cn@vantage
-```
-旧版本把仓库写在独立的 `daeuniverse.list`，APK 可以读取，但 LuCI 配置页不显示该文件。迁移脚本只删除与原始内容完全一致的旧文件；用户修改过的文件保留。系统升级保留的 `customfeeds.list` 也会通过首启脚本补齐仓库行。该配置包不修改内核。刷机后可更新：
+`daeuniverse-repo` 安装用户态 packages 仓库签名公钥；仓库地址直接预置在固件的 `/etc/apk/repositories.d/customfeeds.list`，不会通过开机脚本追加，也不添加 daeuniverse kmods 仓库。公钥位于 `/etc/apk/keys/daeuniverse.pem`。刷机后可更新：
 
 ```sh
 apk update
@@ -46,9 +37,21 @@ honk 默认停用。配置 `/etc/honk/config.dae` 后执行 `/etc/init.d/honk en
 
 ## Vantage 主题
 
-Vantage 通过构建时 feed 安装，每次构建解析最新 Release，并同时安装中文包 `luci-i18n-vantage-theme-zh-cn`。主题自带的 uci-defaults 会在首次启动时设置 `/luci-static/vantage` 为默认主题。
+Vantage 通过构建时 feed 安装，每次构建解析最新 Release，并同时安装 `luci-app-vantage`、`luci-i18n-vantage-zh-cn`、`luci-i18n-vantage-theme-zh-cn`。主题自带的 uci-defaults 会在首次启动时设置 `/luci-static/vantage` 为默认主题。
+
+Vantage 的用户态更新源也直接预置在固件的 `/etc/apk/repositories.d/customfeeds.list`，签名公钥位于 `/etc/apk/keys/vantage-signing.pem`：
+
+```sh
+apk update
+apk upgrade luci-theme-vantage@vantage \
+  luci-app-vantage@vantage \
+  luci-i18n-vantage-zh-cn@vantage \
+  luci-i18n-vantage-theme-zh-cn@vantage
+```
 
 `luci-theme-argon` 和 `luci-app-argon-config` 被明确禁用，并通过固件 manifest 校验不存在。
+
+**不会安装 `dae`、`luci-app-dae` 或 `luci-app-daed`**：dae 与 honk 会争用 `dae0`/`daens` 和相同接口，二者不能同时运行。
 
 ## 自动同步与发布
 
@@ -63,6 +66,5 @@ Vantage 通过构建时 feed 安装，每次构建解析最新 Release，并同�
 ## 缓存与限制
 
 每次构建使用新的 GitHub runner。`dl/` 下载目录使用 Actions cache，但工具链和编译产物不会持久化，因此源码构建仍可能耗时较长。定时任务可能因 GitHub 排队延迟；公开仓库连续 60 天无活动时，GitHub 可能自动停用定时工作流。
-
 
 手动编译请运行 Actions 中的 `Release PonWrt Fork`；上游原版 `Release PonWrt` 仅保留作同步参考，不用于本 Fork 的 honk/Vantage 构建。
