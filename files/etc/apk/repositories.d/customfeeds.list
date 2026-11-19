@@ -1,0 +1,5 @@
+# add your custom package feeds here
+#
+# daeuniverse and Vantage userspace packages for aarch64_cortex-a53.
+@daeuniverse https://openwrt.daeuniverse.org/25.12/packages/aarch64_cortex-a53/packages.adb
+@vantage https://anothadev.github.io/luci-theme-vantage/25.12/packages.adb
